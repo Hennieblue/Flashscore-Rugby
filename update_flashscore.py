@@ -55,12 +55,15 @@ def href(row):
     if u:return u
   except Exception:pass
  return ""
-def status_from(value,score):
+def status_from(value,has_score):
  low=value.lower()
  if low=="ft" or any(x in low for x in ("finished","after extra time","after penalties")):return "FINISHED"
  if any(x in low for x in ("postponed","cancelled","walkover")):return value.upper()
  if re.search(r"\d{1,3}\s*'",value) or any(x in low for x in ("1st half","2nd half","half time","break")):return "LIVE"
- return "UPCOMING" if not score else "LIVE"
+ if re.fullmatch(r"\d{1,2}:\d{2}",value.strip()):return "UPCOMING"
+ # Flashscore finished rows sometimes contain a score but leave the time blank.
+ if has_score and not value.strip():return "FINISHED"
+ return "LIVE" if has_score else "UPCOMING"
 def match_list(d):
  d.get(URL)
  try:WebDriverWait(d,25).until(EC.presence_of_element_located((By.CSS_SELECTOR,"a.eventRowLink,div.event__match,[data-testid='wcl-matchRow']")))
@@ -72,19 +75,26 @@ def match_list(d):
    if "/match/" not in u or len(names)<2 or u.split("#")[0] in seen:continue
    seen.add(u.split("#")[0]);tm=text(row,[".event__time","[class*='event__time']","[data-testid*='time']"])
    hs=text(row,[".event__score--home","[class*='event__score--home']"]);aws=text(row,[".event__score--away","[class*='event__score--away']"])
-   score=f"{hs} - {aws}" if hs and aws else "0 - 0";status=status_from(tm,score if hs and aws else "")
+   has_score=bool(re.fullmatch(r"\d{1,3}",hs) and re.fullmatch(r"\d{1,3}",aws))
+   score=f"{int(hs)} - {int(aws)}" if has_score else "0 - 0"
+   stage=text(row,[".event__stage--block",".event__stage","[class*='event__stage']"])
+   status=status_from(stage or tm,has_score)
    out.append({"home":names[0],"away":names[1],"time":tm,"score":score,"status":status,"url":u,"incidents":[]})
   except Exception:pass
  return out
-def live_detail(d,m):
- if m["status"]!="LIVE":return
+def match_detail(d,m):
+ if m["status"] not in {"LIVE","FINISHED"}:return
  try:
   d.get(m["url"]);time.sleep(2);seen=[]
   for s in ("div.smv__incident","[class*='smv__incident']","[data-testid*='incident']"):
    for e in d.find_elements(By.CSS_SELECTOR,s):
     v=clean(e.text)
-    if v and v not in seen:seen.append(v)
+    if v and v not in {"-","–","—"} and len(v)>1 and v not in seen:seen.append(v)
   m["incidents"]=seen[:100]
+  detail_status=text(d,[".detailScore__status","[class*='detailScore__status']"])
+  if detail_status:
+   corrected=status_from(detail_status,True)
+   if corrected in {"LIVE","FINISHED"}:m["status"]=corrected
   detail=text(d,[".detailScore__wrapper","[class*='detailScore__wrapper']"])
   nums=re.findall(r"\b\d{1,3}\b",detail)
   if len(nums)>=2:m["score"]=f"{nums[0]} - {nums[1]}"
@@ -93,7 +103,7 @@ def main():
  d=driver()
  try:
   matches=match_list(d)
-  for m in matches:live_detail(d,m)
+  for m in matches:match_detail(d,m)
   OUT.write_text(json.dumps({"updated":datetime.now(SA).strftime("%Y-%m-%d %H:%M:%S SAST"),"matches":matches},ensure_ascii=False,indent=2),encoding="utf-8")
   print(f"Saved {len(matches)} matches")
  finally:d.quit()
