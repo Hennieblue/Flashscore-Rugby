@@ -19,7 +19,7 @@ def clean(v): return re.sub(r"\s+"," ",v or "").strip()
 def driver():
  o=webdriver.ChromeOptions()
  for a in ("--headless=new","--window-size=1920,1080","--disable-notifications","--disable-popup-blocking","--disable-gpu","--no-sandbox","--disable-dev-shm-usage","--lang=en-ZA"): o.add_argument(a)
- d=webdriver.Chrome(options=o);d.set_page_load_timeout(60);return d
+ d=webdriver.Chrome(options=o);d.set_page_load_timeout(20);return d
 def cookie(d):
  for sel in ("#onetrust-accept-btn-handler","button[id*='accept']","button[class*='accept']"):
   try:
@@ -29,7 +29,7 @@ def cookie(d):
 def scroll(d):
     quiet=0
     last_height=0
-    for _ in range(20):
+    for _ in range(12):
         clicked=0
         for sel in ("div.event__more","[class*='event__more']","[data-testid*='show-more']"):
             try:
@@ -162,7 +162,7 @@ def match_detail(d,m):
 def save_cycle(d):
     matches=all_matches(d)
     for m in matches:
-        if m["status"] in {"LIVE","FINISHED"}:
+        if m["status"] == "LIVE":
             match_detail(d,m)
     OUT.write_text(
         json.dumps(
@@ -182,6 +182,7 @@ def main():
     try:
         count=save_cycle(d)
         print(datetime.now(SA).strftime("%H:%M:%S"), "Saved", count, "matches")
+        print("Flashscore read completed. Exiting.")
     finally:
         d.quit()
 
