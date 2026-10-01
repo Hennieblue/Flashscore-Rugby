@@ -7,11 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-URLS=[
-    "https://www.flashscore.co.za/rugby-union/",
-    "https://www.flashscore.co.za/rugby-union/new-zealand/npc/",
-    "https://www.flashscore.co.za/rugby-union/world/club-friendly/",
-]
+URLS=["https://www.flashscore.co.za/rugby-union/"]
 OUT=Path(__file__).with_name("data.json")
 SA=ZoneInfo("Africa/Johannesburg")
 # GitHub Actions runs this script again every 5 minutes.
