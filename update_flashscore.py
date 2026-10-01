@@ -14,8 +14,7 @@ URLS=[
 ]
 OUT=Path(__file__).with_name("data.json")
 SA=ZoneInfo("Africa/Johannesburg")
-POLL_SECONDS=60
-RUN_MINUTES=300
+# GitHub Actions runs this script again every 5 minutes.
 def clean(v): return re.sub(r"\s+"," ",v or "").strip()
 def driver():
  o=webdriver.ChromeOptions()
@@ -165,26 +164,26 @@ def save_cycle(d):
     for m in matches:
         if m["status"] in {"LIVE","FINISHED"}:
             match_detail(d,m)
-    OUT.write_text(json.dumps({
-        "updated":datetime.now(SA).strftime("%Y-%m-%d %H:%M:%S SAST"),
-        "matches":matches
-    },ensure_ascii=False,indent=2),encoding="utf-8")
+    OUT.write_text(
+        json.dumps(
+            {
+                "updated":datetime.now(SA).strftime("%Y-%m-%d %H:%M:%S SAST"),
+                "matches":matches
+            },
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
     return len(matches)
 
 def main():
     d=driver()
-    started=time.time()
     try:
-        while True:
-            try:
-                count=save_cycle(d)
-                print(datetime.now(SA).strftime("%H:%M:%S"),"Saved",count,"matches")
-            except Exception as e:
-                print("Update cycle error:",e)
-            if time.time()-started >= RUN_MINUTES*60:
-                break
-            time.sleep(POLL_SECONDS)
+        count=save_cycle(d)
+        print(datetime.now(SA).strftime("%H:%M:%S"), "Saved", count, "matches")
     finally:
         d.quit()
+
 
 if __name__=="__main__":main()
