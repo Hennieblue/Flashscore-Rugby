@@ -139,27 +139,82 @@ def all_matches(d):
     return allm
 
 def match_detail(d,m):
- if m["status"] not in {"LIVE","FINISHED"}:return
- try:
-  d.get(m["url"]);time.sleep(2);seen=[]
-  for s in ("div.smv__incident","[class*='smv__incident']","[data-testid*='incident']"):
-   for e in d.find_elements(By.CSS_SELECTOR,s):
-    v=clean(e.text)
-    if v and v not in {"-","–","—"} and len(v)>1 and v not in seen:seen.append(v)
-  m["incidents"]=seen[:100]
-  detail_status=text(d,[".detailScore__status","[class*='detailScore__status']"])
-  if detail_status:
-   corrected=status_from(detail_status,True)
-   if corrected in {"LIVE","FINISHED"}:m["status"]=corrected
-  detail=text(d,[".detailScore__wrapper","[class*='detailScore__wrapper']"])
-  nums=re.findall(r"\b\d{1,3}\b",detail)
-  if len(nums)>=2:m["score"]=f"{nums[0]} - {nums[1]}"
- except Exception:pass
+    # Read the match-detail page.  The list page can still say 08:10/0-0
+    # after a match has started, so the detail page is the source of truth.
+    if m["status"] == "FINISHED":
+        return
+    try:
+        d.get(m["url"])
+        time.sleep(1.0)
+
+        # Current score: use Flashscore's dedicated score elements first.
+        hs = text(d, [
+            ".detailScore__homeResult",
+            ".detailScore__home",
+            "[class*='detailScore__homeResult']",
+            "[class*='detailScore__home']",
+        ])
+        aws = text(d, [
+            ".detailScore__awayResult",
+            ".detailScore__away",
+            "[class*='detailScore__awayResult']",
+            "[class*='detailScore__away']",
+        ])
+        if re.fullmatch(r"\d{1,3}", hs) and re.fullmatch(r"\d{1,3}", aws):
+            m["score"] = f"{int(hs)} - {int(aws)}"
+
+        # Current match status/minute from the detail page.
+        detail_status = text(d, [
+            ".detailScore__status",
+            "[class*='detailScore__status']",
+            ".detailScore__status span",
+        ])
+        if detail_status:
+            low = detail_status.lower()
+            if low == "ft" or "finished" in low or "after extra time" in low or "after penalties" in low:
+                m["status"] = "FINISHED"
+                m["time"] = detail_status
+            elif re.search(r"\d{1,3}\s*'", detail_status) or any(x in low for x in ("1st half", "2nd half", "half time", "break")):
+                m["status"] = "LIVE"
+                m["time"] = detail_status
+            else:
+                # If a detail page exists and has a non-scheduled score/status,
+                # keep it as live unless it is explicitly finished/upcoming.
+                if m.get("score") != "0 - 0":
+                    m["status"] = "LIVE"
+                    m["time"] = detail_status
+
+        # Incidents: tries, conversions, penalties, cards, substitutions, etc.
+        seen = []
+        for selector in (
+            "div.smv__incident",
+            "div[class*='smv__incident']",
+            "[data-testid*='incident']",
+        ):
+            try:
+                for e in d.find_elements(By.CSS_SELECTOR, selector):
+                    value = clean(e.text)
+                    if value and value not in {"-", "–", "—"} and len(value) > 1 and value not in seen:
+                        seen.append(value)
+            except Exception:
+                pass
+        m["incidents"] = seen[:100]
+
+    except Exception as e:
+        print("Detail error:", m.get("home"), "v", m.get("away"), e)
+
+
+def refresh_nonfinished_details(d, matches):
+    # Refresh every non-finished match from its own detail page.
+    # This is intentionally broader than the old LIVE-only test because
+    # the list page can incorrectly leave a just-started match at 0-0.
+    for m in matches:
+        if m["status"] != "FINISHED":
+            match_detail(d, m)
+
 def save_cycle(d):
     matches=all_matches(d)
-    for m in matches:
-        if m["status"] == "LIVE":
-            match_detail(d,m)
+    refresh_nonfinished_details(d, matches)
     OUT.write_text(
         json.dumps(
             {
